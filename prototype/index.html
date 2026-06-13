@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        
+        <!-- CSS Leaflet & Bawaan -->
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+
+        <!-- Script Turf.js untuk Analisis Spasial (Filtering Titik dalam Area) -->
+        <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+        <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            background-color: #f4f7f6;
+        }
+        
+        /* Sidebar Dashboard */
+        #sidebar {
+            width: 350px;
+            height: 100%;
+            background-color: #ffffff;
+            box-shadow: 4px 0 15px rgba(0,0,0,0.05);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .sidebar-header h2 {
+            margin: 0;
+            font-size: 1.3rem;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-section {
+            padding: 20px;
+            border-bottom: 1px solid #edf2f7;
+        }
+
+        .sidebar-section h3 {
+            margin-top: 0;
+            font-size: 1.05rem;
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        /* Dropdown Filter */
+        .filter-dropdown {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-size: 1rem;
+            color: #2d3748;
+            background-color: #f7fafc;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .filter-dropdown:focus { border-color: #3182ce; }
+
+        /* Button Reset */
+        .btn-action {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.2s;
+        }
+        
+        #btn-reset-all {
+            background-color: #edf2f7;
+            color: #4a5568;
+            border: 1px solid #e2e8f0;
+        }
+        #btn-reset-all:hover { background-color: #e2e8f0; }
+
+        #btn-reset-route {
+            display: none; /* Muncul jika routing aktif */
+            background-color: #e53e3e;
+            color: white;
+            box-shadow: 0 4px 6px rgba(229, 62, 62, 0.3);
+        }
+        #btn-reset-route:hover { background-color: #c53030; }
+
+        /* Styling Info Data Wilayah */
+        #info-data {
+            font-size: 0.95rem;
+            color: #4a5568;
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            line-height: 1.6;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed #cbd5e0;
+        }
+        .info-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+        .info-label { font-weight: 600; color: #2d3748; }
+        .info-value { color: #3182ce; font-weight: 700; }
+
+        #map-container {
+            flex-grow: 1;
+            height: 100%;
+            position: relative;
+        }
+        #map { width: 100%; height: 100%; }
+
+        /* Sembunyikan panel rute default */
+        .leaflet-routing-container { display: none !important; }
+        
+        /* Tooltip Hover Pin */
+        .leaflet-tooltip {
+            background: rgba(44, 62, 80, 0.95);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .leaflet-tooltip-top:before { border-top-color: rgba(44, 62, 80, 0.95); }
+        </style>
+        <title>WebGIS Fasilitas & Kependudukan</title>
+    </head>
+    <body>
+        
+        <!-- Sidebar -->
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h2>Dashboard Wilayah</h2>
+            </div>
+
+            <!-- Bagian Filtering Baru -->
+            <div class="sidebar-section">
+                <h3>📍 Filter Lokasi</h3>
+                <select id="filter-wilayah" class="filter-dropdown">
+                    <option value="all">-- Semua Kecamatan --</option>
+                    <!-- Options akan diisi otomatis lewat JS -->
+                </select>
+                <button id="btn-reset-all" class="btn-action" onclick="resetAllFilters()">🔄 Tampilkan Semua Area</button>
+                <button id="btn-reset-route" class="btn-action" onclick="resetMapRoute()">❌ Hapus Rute</button>
+            </div>
+            
+            <!-- Bagian Info Area -->
+            <div class="sidebar-section" style="border-bottom: none;">
+                <h3>📊 Info Area (Hover)</h3>
+                <div id="info-data">
+                    <div style="text-align: center; color: #a0aec0; font-style: italic; padding: 15px 0;">
+                        Arahkan kursor ke area kecamatan pada peta untuk melihat detail data.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Peta -->
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+
+        <!-- Scripts Dasar -->
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        
+        <!-- Load Semua Data GeoJSON -->
+        <script src="data/ADMINISTRASI_LN_50K_2.js"></script>
+        <script src="data/ADMINISTRASIKECAMATAN_AR_50K_3.js"></script>
+        <script src="data/JALAN_LN_50K_4.js"></script>
+        <script src="data/PENDIDIKAN_PT_50K_5.js"></script>
+        <script src="data/SARANAIBADAH_PT_50K_6.js"></script> 
+        <script src="data/SPBU_PT_50K_7.js"></script>
+        <script src="data/ARENAOLAHRAGA_AR_50K_8.js"></script> 
+        <script src="data/RUMAHSAKIT_PT_50K_9.js"></script>
+        
+        <!-- Script Routing -->
+        <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
+        <script>
+        // === INISIALISASI PETA ===
+        var map = L.map('map', {
+            zoomControl: true, maxZoom: 28, minZoom: 1
+        }).fitBounds([[-5.4809,105.1770],[-5.3378,105.3711]]);
+        
+        var baseMaps = {
+            "Google Hybrid": L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 28 }).addTo(map)
+        };
+
+        // === ICON CUSTOM ===
+        var iconRumahSakit = L.icon({ iconUrl: 'images/hospital.png', iconSize: [30, 30], iconAnchor: [15, 30] });
+        var iconPendidikan = L.icon({ iconUrl: 'images/school.png', iconSize: [30, 30], iconAnchor: [15, 30] });
+        var iconSPBU = L.icon({ iconUrl: 'images/gas.png', iconSize: [30, 30], iconAnchor: [15, 30] });
+        var iconIbadah = L.icon({ iconUrl: 'images/mosque.png', iconSize: [30, 30], iconAnchor: [15, 30] });
+        var iconOlahraga = L.icon({ iconUrl: 'images/sport.png', iconSize: [30, 30], iconAnchor: [15, 30] });
+        var iconUnila = L.icon({ iconUrl: 'images/school.png', iconSize: [35, 35], iconAnchor: [17, 35] }); 
+
+        var unilaCoords = L.latLng(-5.36423, 105.24351);
+        var currentRouteIcon = null; 
+        var activeLayersBeforeRouting = [];
+
+        // === ROUTING CONTROL ===
+        var routingControl = L.Routing.control({
+            waypoints: [],
+            routeWhileDragging: false,
+            addWaypoints: false,
+            fitSelectedRoutes: true,
+            showAlternatives: false,
+            lineOptions: { styles: [{color: '#e53e3e', opacity: 0.9, weight: 6}] },
+            createMarker: function(i, waypoint, n) {
+                let icon = (i === 0) ? iconUnila : currentRouteIcon;
+                return L.marker(waypoint.latLng, { icon: icon });
+            }
+        }).addTo(map);
+
+        // === DUMMY DATA GENERATOR ===
+        function generateDummyData(namaWilayah) {
+            let hash = 0;
+            if(namaWilayah) { for (let i = 0; i < namaWilayah.length; i++) hash += namaWilayah.charCodeAt(i); }
+            return {
+                penduduk: Math.floor((hash * 123) % 80000 + 15000).toLocaleString('id-ID'),
+                luas: Math.floor((hash * 12) % 150 + 20),
+                sekolah: Math.floor((hash * 3) % 25 + 5),
+                rs: Math.floor((hash * 2) % 6 + 1),
+                spbu: Math.floor((hash * 5) % 12 + 2),
+                ibadah: Math.floor((hash * 4) % 30 + 10),
+                olahraga: Math.floor((hash * 7) % 8 + 1)
+            };
+        }
+
+        // === HIGHLIGHT AREA KECAMATAN ===
+        var highlightLayer;
+        function highlightFeature(e) {
+            highlightLayer = e.target;
+            highlightLayer.setStyle({ fillColor: '#3182ce', fillOpacity: 0.25, weight: 3, color: '#2b6cb0' });
+
+            var props = highlightLayer.feature.properties;
+            var namaWilayah = props.NAMOBJ || 'Wilayah Tidak Diketahui';
+            var d = generateDummyData(namaWilayah);
+            
+            document.getElementById('info-data').innerHTML = `
+                <div class="info-row"><span class="info-label">Kecamatan:</span> <span class="info-value">${namaWilayah}</span></div>
+                <div class="info-row"><span class="info-label">Luas Wilayah:</span> <span class="info-value">${d.luas} km²</span></div>
+                <div class="info-row"><span class="info-label">Penduduk:</span> <span class="info-value">${d.penduduk} Jiwa</span></div>
+                <hr style="border:0; border-top:1px solid #e2e8f0; margin: 10px 0;">
+                <div style="font-size: 0.85rem; color: #718096; margin-bottom:8px;">Fasilitas:</div>
+                <div class="info-row"><span class="info-label">Pendidikan:</span> <span class="info-value">${d.sekolah}</span></div>
+                <div class="info-row"><span class="info-label">Rumah Sakit:</span> <span class="info-value">${d.rs}</span></div>
+                <div class="info-row"><span class="info-label">SPBU:</span> <span class="info-value">${d.spbu}</span></div>
+                <div class="info-row"><span class="info-label">S. Ibadah:</span> <span class="info-value">${d.ibadah}</span></div>
+                <div class="info-row"><span class="info-label">Olahraga:</span> <span class="info-value">${d.olahraga}</span></div>
+            `;
+        }
+
+        function resetHighlight(e) {
+            layer_ADMINISTRASIKECAMATAN_AR_50K_3.resetStyle(e.target);
+            document.getElementById('info-data').innerHTML = `<div style="text-align: center; color: #a0aec0; font-style: italic; padding: 15px 0;">Arahkan kursor ke area kecamatan pada peta untuk melihat detail data.</div>`;
+        }
+
+        // === LAYERS DASAR (AREA & JALAN) ===
+        var layer_ADMINISTRASIKECAMATAN_AR_50K_3 = new L.geoJson(json_ADMINISTRASIKECAMATAN_AR_50K_3, {
+            style: function() { return { color: '#2b6cb0', weight: 2.5, fillOpacity: 0.05 } },
+            onEachFeature: function(feature, layer) {
+                layer.on({ mouseover: highlightFeature, mouseout: resetHighlight });
+            }
+        }).addTo(map);
+
+        var layer_JALAN_LN_50K_4 = new L.geoJson(json_JALAN_LN_50K_4, {
+            style: function() { return { color: '#ecc94b', weight: 1.5, opacity: 0.85 } }
+        }).addTo(map);
+
+
+        // === PEMBUATAN POINT LAYERS & REFERENSI DATA ASLI ===
+        var pointLayers = []; // Untuk array iterasi UI & routing
+
+        // Object referensi original data untuk kebutuhan Filtering
+        var layerMapConfigs = [
+            { id: 'rs', rawData: json_RUMAHSAKIT_PT_50K_9, icon: iconRumahSakit },
+            { id: 'pend', rawData: json_PENDIDIKAN_PT_50K_5, icon: iconPendidikan },
+            { id: 'spbu', rawData: json_SPBU_PT_50K_7, icon: iconSPBU },
+            { id: 'ibadah', rawData: json_SARANAIBADAH_PT_50K_6, icon: iconIbadah },
+            { id: 'olahraga', rawData: json_ARENAOLAHRAGA_AR_50K_8, icon: iconOlahraga }
+        ];
+
+        function createPointLayer(config) {
+            var layer = L.geoJson(config.rawData, {
+                pointToLayer: function (feature, latlng) {
+                    var marker = L.marker(latlng, {icon: config.icon});
+                    marker.bindTooltip(feature.properties.NAMOBJ || 'Fasilitas', { permanent: false, direction: 'top', offset: [0, -25] });
+                    marker.on('click', function(e) { startRouteMode(e.latlng, config.icon); });
+                    return marker;
+                }
+            });
+            config.layerInstance = layer; 
+            pointLayers.push(layer);
+            return layer;
+        }
+
+        var layer_RUMAHSAKIT_PT_50K_9 = createPointLayer(layerMapConfigs[0]).addTo(map);
+        var layer_PENDIDIKAN_PT_50K_5 = createPointLayer(layerMapConfigs[1]).addTo(map);
+        var layer_SPBU_PT_50K_7 = createPointLayer(layerMapConfigs[2]).addTo(map);
+        var layer_SARANAIBADAH_PT_50K_6 = createPointLayer(layerMapConfigs[3]).addTo(map);
+        var layer_ARENAOLAHRAGA_AR_50K_8 = createPointLayer(layerMapConfigs[4]).addTo(map);
+
+        
+        // === LOGIKA FILTERING DROPDOWN (TURF.JS) ===
+        
+        // 1. Ambil Nama Kecamatan & Isi Dropdown
+        var dropdown = document.getElementById('filter-wilayah');
+        var semuaKecamatan = json_ADMINISTRASIKECAMATAN_AR_50K_3.features.map(f => f.properties.NAMOBJ).filter(Boolean);
+        var kecamatanUnik = [...new Set(semuaKecamatan)].sort(); // Sort abjad
+        
+        kecamatanUnik.forEach(nama => {
+            let opt = document.createElement('option');
+            opt.value = nama; opt.innerHTML = nama;
+            dropdown.appendChild(opt);
+        });
+
+        // 2. Fungsi Eksekusi Filter
+        dropdown.addEventListener('change', function(e) {
+            filterMapByKecamatan(e.target.value);
+        });
+
+        function filterMapByKecamatan(namaKecamatan) {
+            resetMapRoute(); // Selalu matikan rute saat mengubah filter
+
+            if (namaKecamatan === 'all') {
+                // Tampilkan Semua Data
+                layerMapConfigs.forEach(cfg => {
+                    cfg.layerInstance.clearLayers();
+                    cfg.layerInstance.addData(cfg.rawData); 
+                });
+                map.fitBounds(layer_ADMINISTRASIKECAMATAN_AR_50K_3.getBounds());
+                return;
+            }
+
+            // Temukan Poligon Kecamatan yang Dipilih
+            var polyKecamatan = json_ADMINISTRASIKECAMATAN_AR_50K_3.features.find(f => f.properties.NAMOBJ === namaKecamatan);
+            if (!polyKecamatan) return;
+
+            // Zoom Peta ke Kecamatan Tersebut
+            var bounds = L.geoJson(polyKecamatan).getBounds();
+            map.fitBounds(bounds);
+
+            // Filter Setiap Layer Titik Menggunakan Turf.js (Point-in-Polygon)
+            layerMapConfigs.forEach(cfg => {
+                cfg.layerInstance.clearLayers(); // Bersihkan peta
+                
+                var titikTersaring = cfg.rawData.features.filter(pt => {
+                    try { return turf.booleanPointInPolygon(pt, polyKecamatan); } 
+                    catch(err) { return false; }
+                });
+                
+                cfg.layerInstance.addData(titikTersaring); // Masukkan hanya titik di dalam wilayah
+            });
+        }
+
+        // Tombol Reset Filter Utama
+        window.resetAllFilters = function() {
+            document.getElementById('filter-wilayah').value = 'all';
+            filterMapByKecamatan('all');
+        }
+
+
+        // === LOGIKA ROUTING ===
+        function startRouteMode(latlng, iconType) {
+            currentRouteIcon = iconType;
+            activeLayersBeforeRouting = pointLayers.filter(layer => map.hasLayer(layer));
+            
+            pointLayers.forEach(layer => { if(map.hasLayer(layer)) map.removeLayer(layer); });
+            
+            routingControl.setWaypoints([unilaCoords, latlng]);
+            document.getElementById('btn-reset-route').style.display = 'block';
+        }
+
+        window.resetMapRoute = function() {
+            routingControl.setWaypoints([]); 
+            activeLayersBeforeRouting.forEach(layer => { map.addLayer(layer); });
+            document.getElementById('btn-reset-route').style.display = 'none';
+        }
+
+
+        // === MENU LAYER CONTROL (UKURAN STANDAR & COLLAPSED) ===
+        var overlayMaps = {
+            "🏥 Rumah Sakit": layer_RUMAHSAKIT_PT_50K_9,
+            "🏫 Pendidikan": layer_PENDIDIKAN_PT_50K_5,
+            "🕌 Sarana Ibadah": layer_SARANAIBADAH_PT_50K_6,
+            "⛽ SPBU": layer_SPBU_PT_50K_7,
+            "⚽ Arena Olahraga": layer_ARENAOLAHRAGA_AR_50K_8,
+            "🛣️ Jaringan Jalan": layer_JALAN_LN_50K_4,
+            "🗺️ Batas Kecamatan": layer_ADMINISTRASIKECAMATAN_AR_50K_3
+        };
+
+        // Collapsed bernilai True agar bentuknya jadi icon layer kecil
+        L.control.layers(baseMaps, overlayMaps, {
+            collapsed: true,
+            position: 'topright'
+        }).addTo(map);
+
+        </script>        
+    </body>
+</html>
