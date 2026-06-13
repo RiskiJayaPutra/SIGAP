@@ -90,10 +90,20 @@ php artisan icons:cache
 ```
 
 ### 7. Menjalankan Server
-Sistem siap dijalankan. Mulai development server menggunakan Artisan.
+Sistem siap dijalankan. Untuk tahap pengembangan (*development*), Anda perlu menjalankan server PHP dan *Vite asset bundler* secara bersamaan. Buka dua terminal terpisah dan jalankan perintah berikut:
+
+**Terminal 1 (Backend):**
 ```bash
 php artisan serve
 ```
+
+**Terminal 2 (Frontend HMR):**
+```bash
+npm run dev
+```
+
+*(Catatan: Jika Anda melakukan deployment ke server produksi, cukup gunakan perintah `npm run build` di awal dan abaikan `npm run dev`).*
+
 Akses aplikasi melalui *browser* pada alamat `http://127.0.0.1:8000`. 
 Untuk mengakses dashboard Admin Filament, buka rute `/admin` dan *login* menggunakan kredensial yang telah Anda atur.
 
