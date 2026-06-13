@@ -28,11 +28,7 @@ class DatabaseSeeder extends Seeder
         );
 
         $this->call([
-            KategoriFasilitasSeeder::class,    // 1st: categories must exist
-            KategoriBariSeeder::class,         // 1b: 5 new categories
-            KecamatanGeomSeeder::class,        // 2nd: kecamatan geom must exist for ST_Contains
-            KecamatanDataSeeder::class,
-            FasilitasFromGeoJSONSeeder::class,  // 3rd: needs both kategori and kecamatan
+            RealDataSeeder::class,
         ]);
     }
 }
